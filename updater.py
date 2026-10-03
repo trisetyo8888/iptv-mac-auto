@@ -116,9 +116,9 @@ def get_country_group(channel_name, original_group):
           '| RW |',
           '| GR |',
            '| RT |',
-          dan seterusnya
+         # dan seterusnya
     }
-
+ 
     # 2. Regex untuk mencari pola kode di awal nama channel:
     # Pola: '|FR|', atau [FR] atau (FR) atau FR: di awal teks
     match = re.match(r'^[\s\-_]*[\[\|\(]?([A-Za-z]{2,5})[\]\|\)]?[\s\-_]*:', name) or \
