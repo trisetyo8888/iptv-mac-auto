@@ -22,20 +22,13 @@ jobs:
         python-state: '3.x'
 
     # 3. Instal library yang dibutuhkan
-    - name: Install dependencies
-      run: |
-        pip install requests
-
-    # 4. Jalankan skrip pembaru
-    - name: Run update script
-      run: python update_portal.py
-
-    # 5. Commit dan Push perubahan kembali ke GitHub
+    - # 5. Commit dan Push perubahan kembali ke GitHub
     - name: Commit and Push changes
       run: |
         git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@://github.com"
-        git add portal.txt
-        # Hanya commit jika ada perubahan data
-        git diff-index --quiet HEAD || git commit -m "Otomatis: Perbarui MAC portal setiap 6 jam"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        # UBAH DISINI: Suruh Git mendeteksi file playlist.m3u yang baru dibuat
+        git add playlist.m3u
+        git diff-index --quiet HEAD || git commit -m "Otomatis: Perbarui playlist.m3u setiap 6 jam"
+        git pushit commit -m "Otomatis: Perbarui MAC portal setiap 6 jam"
         git push
