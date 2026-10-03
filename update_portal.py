@@ -1,16 +1,16 @@
-import requests
+,import requests
 
-# URL sumber MAC portal yang selalu berubah atau menyediakan data terbaru
+# Masukkan URL sumber MAC portal Anda di sini
 SOURCE_URL = "http://nk.team-tx.st/c/" 
 
 def fetch_and_save():
     try:
         response = requests.get(SOURCE_URL, timeout=10)
         if response.status_code == 200:
-            # Simpan hasilnya ke file portal.txt
-            with open("portal.txt", "w") as f:
+            # UBAH DISINI: Ganti portal.txt menjadi playlist.m3u
+            with open("playlist.m3u", "w", encoding="utf-8") as f:
                 f.write(response.text)
-            print("Portal berhasil diperbarui.")
+            print("Playlist M3U berhasil diperbarui.")
         else:
             print(f"Gagal mengambil data. Status code: {response.status_code}")
     except Exception as e:
