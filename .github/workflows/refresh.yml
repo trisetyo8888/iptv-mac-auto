@@ -1,42 +1,41 @@
-name: Refresh M3U Portal
+name: Perbarui MAC Portal Otomatis
 
 on:
   schedule:
-    # Berjalan otomatis setiap 6 jam sekali
+    # Menggunakan format cron untuk berjalan setiap 6 jam
     - cron: '0 */6 * * *'
-  workflow_dispatch: # Tombol manual tetap aktif
+  workflow_dispatch: # Memungkinkan Anda menjalankan alur kerja ini secara manual
 
 jobs:
-  update-m3u:
+  update-link:
     runs-on: ubuntu-latest
+
     steps:
+    # 1. Panggil repositori Anda
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
+    # 2. Siapkan Python
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.x'
+        python-state: '3.x'
 
-    - name: Install Dependencies
-      run: pip install requests
-
-    - name: Run Converter Script
-      run: python updater.py
-
-    - name: Commit and Push Playlists
+    # 3. Instal library yang dibutuhkan
+    - name: Install dependencies
       run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        
-        # Mendaftarkan seluruh file M3U yang berhasil terbuat
-        git add *.m3u || true
-        
-        # Mengecek apakah ada perubahan nyata pada file. 
-        # Jika tidak ada perubahan atau file kosong, proses dilewati tanpa memicu tanda silang merah.
-        if git diff --staged --quiet; then
-          echo "Tidak ada perubahan pada file M3U. Lewati proses push."
-        else
-          git commit -m "Auto-refresh M3U Playlists [Skip CI]"
-          git push origin main
-        fi
+        pip install requests
+
+    # 4. Jalankan skrip pembaru
+    - name: Run update script
+      run: python update_portal.py
+
+    # 5. Commit dan Push perubahan kembali ke GitHub
+    - name: Commit and Push changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@://github.com"
+        git add portal.txt
+        # Hanya commit jika ada perubahan data
+        git diff-index --quiet HEAD || git commit -m "Otomatis: Perbarui MAC portal setiap 6 jam"
+        git push
