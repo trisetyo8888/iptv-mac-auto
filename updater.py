@@ -132,3 +132,4 @@ def fetch_mac_portal():
 
 if __name__ == "__main__":
     fetch_mac_portal()
+    
