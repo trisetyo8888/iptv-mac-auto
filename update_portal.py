@@ -1,4 +1,4 @@
-,import requests
+import requests
 
 # Masukkan URL sumber MAC portal Anda di sini
 SOURCE_URL = "http://nk.team-tx.st/c/" 
