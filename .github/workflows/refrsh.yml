@@ -1,0 +1,42 @@
+name: Refresh M3U Portal
+
+on:
+  schedule:
+    # Berjalan otomatis setiap 6 jam sekali
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Tombol manual tetap aktif
+
+jobs:
+  update-m3u:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install Dependencies
+      run: pip install requests
+
+    - name: Run Converter Script
+      run: python updater.py
+
+    - name: Commit and Push Playlists
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        # Mendaftarkan seluruh file M3U yang berhasil terbuat
+        git add *.m3u || true
+        
+        # Mengecek apakah ada perubahan nyata pada file. 
+        # Jika tidak ada perubahan atau file kosong, proses dilewati tanpa memicu tanda silang merah.
+        if git diff --staged --quiet; then
+          echo "Tidak ada perubahan pada file M3U. Lewati proses push."
+        else
+          git commit -m "Auto-refresh M3U Playlists [Skip CI]"
+          git push origin main
+        fi
