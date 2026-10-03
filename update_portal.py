@@ -1,7 +1,7 @@
 ⁰import requests
 
 # URL sumber MAC portal yang selalu berubah atau menyediakan data terbaru
-SOURCE_URL = "https://sumber-mac-portal-anda.com" 
+SOURCE_URL = "http://nk.team-tx.st/c/" 
 
 def fetch_and_save():
     try:
