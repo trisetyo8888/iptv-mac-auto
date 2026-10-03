@@ -1,4 +1,4 @@
-⁰import requests
+import requests
 
 # URL sumber MAC portal yang selalu berubah atau menyediakan data terbaru
 SOURCE_URL = "http://nk.team-tx.st/c/" 
