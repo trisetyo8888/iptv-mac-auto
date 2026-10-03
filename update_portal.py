@@ -1,34 +1,20 @@
-name: Perbarui MAC Portal Otomatis
+import requests
 
-on:
-  schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch: 
+# Masukkan URL sumber MAC portal Anda di sini
+SOURCE_URL = "http://nk.team-tx.st/c/" 
 
-jobs:
-  update-link:
-    runs-on: ubuntu-latest
+def fetch_and_save():
+    try:
+        response = requests.get(SOURCE_URL, timeout=10)
+        if response.status_code == 200:
+            # UBAH DISINI: Ganti portal.txt menjadi playlist.m3u
+            with open("playlist.m3u", "w", encoding="utf-8") as f:
+                f.write(response.text)
+            print("Playlist M3U berhasil diperbarui.")
+        else:
+            print(f"Gagal mengambil data. Status code: {response.status_code}")
+    except Exception as e:
+        print(f"Terjadi kesalahan: {e}")
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
-
-    - name: Install dependencies
-      run: |
-        pip install requests
-
-    - name: Run update script
-      run: python update_portal.py
-
-    - name: Commit and Push changes
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@://github.com"
-        git add playlist.m3u
-        git diff-index --quiet HEAD || git commit -m "Otomatis: Perbarui berkas playlist M3U"
-        git push
+if __name__ == "__main__":
+    fetch_and_save()
