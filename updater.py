@@ -2,26 +2,144 @@ import os
 import requests
 import json
 import hashlib
+import re
 
 def get_country_group(channel_name, original_group):
-    name = channel_name.upper()
-    og = str(original_group).upper()
+    name = channel_name.strip '| |',
     
-    # --- KAMUS KATA KUNCI NEGARA ---
-    if "INDO" in name or "ID:" in name or "INDONESIA" in name or "INDO" in og:
-        return "INDONESIA"
-    elif "MALAY" in name or "MY:" in name or "MALAYSIA" in name or "MALAY" in og:
-        return "MALAYSIA"
-    elif "SG:" in name or "SINGAPORE" in name or "SINGAPURA" in name:
-        return "SINGAPORE"
-    elif "USA" in name or "US:" in name or "UNITED STATES" in name or "USA" in og:
-        return "UNITED STATES"
-    elif "UK:" in name or "UNITED KINGDOM" in name or "BRITISH" in name or "UK" in og:
-        return "UNITED KINGDOM"
-    elif "ARAB" in name or "OSN" in name or "BEIN" in name or "AR:" in name:
-        return "ARABIC & SPORTS"
+    # 1. Kamus manual untuk menerjemahkan kode huruf menjadi nama negara lengkap
+    country_map = {
+        '┃UCL┃',
+        '┃NL┃',
+        '┃NLZIET┃',
+        '┃CANAL+┃',
+        'UFC',
+        'LIVE EVENT',
+        'Boxing',
+        '| EN |',
+        '| MOTOGP |',
+        '| MXGP |',
+        'Tennis',
+        '| F1 TV |',
+        '| BE |',
+        '|VTM GO+|',
+        '| LU |',
+        '| DE |',
+        '| UK |',
+        'OTHERS',
+        'Live Football',
+        '| IE |'
+        '| FR |',
+        'Disney FR|',
+        '| CH |',
+        '| AT |',
+        '| AL |',
+         '| AT |',
+         '| GR |',
+         '| CY |',
+         '| IT |',
+         '| ES |',
+         '| USA |',
+         '| US |',
+         'MLB',
+         '| MiLB |',
+         '| MLS |',
+          '| MiLB |',
+          '| WNBA |',
+          '| NCAAW |',
+          '| NJCAA |',
+          '| NCAA |',
+          '| CA FR |',
+          '| NJCAA |',
+          '| CA EN |',
+          '| NZ |',
+          '| TR |',
+          '| RS |',
+          '| TR |',
+          '| BA |',
+          '| HR |',
+          '| MK |',
+          '| ME |',
+          '| SI |',
+          '| EXYU |',
+          '| SI |',
+          '| BG |',
+          '| RO |',
+          '| CZ |',
+          '| HU |',
+          '| PL |',
+          '| PT |',
+          '| AR |',
+          '| MA |',
+          '| DZ |',
+          '| TN |',
+          '| OSN |',
+          '| EG |',
+          '| AE |',
+          '| IQ |',
+          '| SA |',
+          '| PS |',
+          '| JO |',
+          '| LY |',
+          '| SU |',
+          '| YE |',
+          '| QAT |',
+          '| KU |',
+          '| KURD - SAT |',
+          '| KURD - DVB T |',
+          '| KURD - SAT |',
+          '| KURD |',
+          '| AFG |',
+          '| YE |',
+          '| IR |',
+          '| SOM |',
+          '| IR |',
+          '| AF |',
+          '| IR |',
+          '| SN |',
+          '| GH |',
+          '| NG |',
+          '| KE |',
+          '| DRC |',
+          '| CM |',
+          '| ET |',
+          '| TG |',
+          '| GN |',
+          '| GA |',
+          '| CI |',
+          '| AO |',
+          '| BF |',
+          '| BJ |',
+          '| TZ |',
+          '| UG |',
+          '| MZ |',
+          '| RW |',
+          '| GR |',
+           '| RT |',
+          dan seterusnya
+    }
+
+    # 2. Regex untuk mencari pola kode di awal nama channel:
+    # Pola: '|FR|', atau [FR] atau (FR) atau FR: di awal teks
+    match = re.match(r'^[\s\-_]*[\[\|\(]?([A-Za-z]{2,5})[\]\|\)]?[\s\-_]*:', name) or \
+            re.match(r'^[\s\-_]*[\[\|\(]([A-Za-z]{2,5})[\]\|\)]', name)
+            
+    if match:
+        code = match.group(1).upper()
+        # Jika kode huruf terdaftar di kamus, gunakan nama negaranya
+        if code in country_map:
+            return country_map[code]
+        # Jika tidak terdaftar (misal ada kode baru |BE| atau |CH|), jadikan kodenya sebagai nama grup
+        return code
+
+    # 3. Jika tidak ada kode di awal nama, coba cari kata kunci di nama atau kategori bawaan
+    name_upper = name.upper()
+    og_upper = str(original_group).upper()
     
-    # Jika tidak ada yang cocok, gunakan nama kategori bawaan portal (bukan 'General' mutlak)
+    for code, country_name in country_map.items():
+        if code in og_upper or country_name in og_upper:
+            return country_name
+
     if original_group and str(original_group).strip() != "" and str(original_group).lower() != "general":
         return str(original_group)
         
@@ -37,7 +155,7 @@ def fetch_mac_portal():
 
     portal_sukses = 0
 
-    # Mengatur pemisahan menjadi 3 file playlist_1.m3u, playlist_2.m3u, playlist_3.m3u
+    # Memproses 3 file playlist secara terpisah: playlist_1.m3u, playlist_2.m3u, playlist_3.m3u
     for index, line in enumerate(lines, start=1):
         line = line.strip()
         if not line or '|' not in line:
@@ -83,7 +201,7 @@ def fetch_mac_portal():
                 session.cookies.update(cookies)
 
             # Get Profile
-            profile_url = f"{portal_url}/portal.php?type=stb&action=get_profile&hd=1&ver=ImageDescription:%200.2.18-r14-pub-250&sn=123456789012&stb_type=MAG250&image_version=218&device_id={device_id}&js=true"
+            profile_url = f"{portal_url}/portal.php?type=stb&action=get_profile&hd=1&ver=ImageDescription:%200.2.18-r14-pub-250&sn=123456789012;device_id={device_id}&js=true"
             if token: profile_url += f"&token={token}"
             session.get(profile_url, cookies=session.cookies, timeout=12)
 
@@ -123,16 +241,16 @@ def fetch_mac_portal():
                     elif ' ' in cmd: stream_url = cmd.split(' ')[-1]
                     else: stream_url = cmd
                     
-                    # Dapatkan nama kategori asli dari server
+                    # Ambil grup asli portal
                     portal_group = ch.get('tvg_id', ch.get('category_id', 'General'))
                     
-                    # Sortir otomatis grup berdasarkan kecocokan teks nama negara
+                    # Sortir dinamis berdasarkan kode huruf awal nama channel
                     final_group = get_country_group(name, portal_group)
                     
                     m3u.write(f'#EXTINF:-1 tvg-name="{name}" group-title="{final_group}",{name}\n')
                     m3u.write(f'{stream_url}\n')
                     
-            print(f"[+] File {filename} sukses disimpan dengan kategori teratur!")
+            print(f"[+] File {filename} sukses disimpan dengan kategori negara rapi!")
             portal_sukses += 1
 
         except Exception as e:
