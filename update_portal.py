@@ -12,15 +12,10 @@ def fetch_stalker_to_m3u():
             print("Error: portal.txt harus berisi URL di baris ke-1 dan MAC di baris ke-2.")
             return
             
-        # PERBAIKAN: Mengambil baris indeks secara tepat
         raw_url = lines[0]
         mac_address = lines[1]
         
-        # Membersihkan URL: Stalker API berada di /server/load.php (di luar folder /c/)
         base_url = re.sub(r'/c/?$', '', raw_url).rstrip('/')
-        
-        print(f"Menghubungkan ke API Portal: {base_url}")
-        print(f"Menggunakan MAC Address: {mac_address}")
         
         # HEADER WAJIB: Meniru perangkat MAG Box asli
         headers = {
@@ -35,51 +30,67 @@ def fetch_stalker_to_m3u():
         req = requests.get(handshake_url, headers=headers, timeout=15)
         
         try:
-            res_json = req.json()
-            token = res_json.get('js', {}).get('token')
+            token = req.json().get('js', {}).get('token')
         except Exception:
             print("Gagal membaca respons API. Server tidak mengembalikan JSON.")
-            print("Respons Server:", req.text[:200])
             return
             
         if not token:
-            print("Gagal melakukan handshake. Token tidak ditemukan. Periksa kembali kecocokan URL/MAC Anda.")
+            print("Gagal melakukan handshake. Token tidak ditemukan.")
             return
             
-        print("Handshake Berhasil! Token didapatkan.")
-        
-        # Tambahkan token ke Header untuk otentikasi
         headers["Authorization"] = f"Bearer {token}"
         
-        # 3. Langkah 2: Mengambil daftar semua saluran (Channels)
+        # 3. Langkah 2: Mengambil DAFTAR KATEGORI/GENRE terlebih dahulu (Agar punya nama folder)
+        genres_url = f"{base_url}/server/load.php?type=itv&action=get_genres&JsHttpRequest=1-xml"
+        genres_req = requests.get(genres_url, headers=headers, timeout=15)
+        genres_data = genres_req.json().get('js', [])
+        
+        # Simpan kategori ke dalam kamus (dictionary) ID -> Nama Kategori
+        category_map = {}
+        for genre in genres_data:
+            c_id = str(genre.get('id'))
+            c_name = genre.get('title', 'Lainnya')
+            category_map[c_id] = c_name
+            
+        # 4. Langkah 3: Mengambil semua daftar saluran
         channels_url = f"{base_url}/server/load.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml"
         channels_req = requests.get(channels_url, headers=headers, timeout=20)
         channels_data = channels_req.json().get('js', {}).get('data', [])
         
         if not channels_data:
-            print("Daftar siaran kosong atau akun MAC Anda mungkin sudah kedaluwarsa/diblokir.")
+            print("Daftar siaran kosong.")
             return
             
-        # 4. Langkah 3: Menyusun data ke format Playlist M3U yang valid
+        # 5. Langkah 4: Menyusun data ke format M3U terstruktur
         with open("playlist.m3u", "w", encoding="utf-8") as m3u:
             m3u.write("#EXTM3U\n")
             count = 0
             for ch in channels_data:
+                # FILTER UTAMA: Hanya TV Live, abaikan data Film/VOD/Drama agar playlist ringan
+                if ch.get('is_vod') == 1 or ch.get('open') == 0:
+                    continue
+                    
                 name = ch.get('name', 'Unknown Channel')
                 cmd = ch.get('cmd', '')
                 
+                # Menentukan nama folder kategori berdasarkan ID-nya
+                cat_id = str(ch.get('tv_genre_id'))
+                group_name = category_map.get(cat_id, "Uncategorized")
+                
                 if "http" in cmd:
                     stream_url = cmd.replace("ffmpeg ", "").replace("ch/ ", "ch/").strip()
-                    m3u.write(f"#EXTINF:-1,{name}\n")
+                    # Menambahkan tag group-title agar aplikasi IPTV mendeteksi folder kategori
+                    m3u.write(f'#EXTINF:-1 group-title="{group_name}",{name}\n')
                     m3u.write(f"{stream_url}\n")
                     count += 1
                 
-        print(f"Sukses! Berhasil mengonversi {count} saluran ke dalam 'playlist.m3u'.")
+        print(f"Sukses! Mengonversi {count} saluran ke playlist.m3u dengan pembagian folder otomatis.")
         
     except FileNotFoundError:
-        print("Error: File portal.txt tidak ditemukan di root repositori.")
+        print("Error: File portal.txt tidak ditemukan.")
     except Exception as e:
-        print(f"Terjadi masalah pemrosesan Stalker API: {e}")
+        print(f"Terjadi masalah: {e}")
 
 if __name__ == "__main__":
     fetch_stalker_to_m3u()
