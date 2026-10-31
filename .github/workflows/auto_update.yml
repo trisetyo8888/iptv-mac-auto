@@ -22,13 +22,25 @@ jobs:
       run: |
         pip install requests
 
-    - name: Run update script
-      run: python update_portal.py
-
-    - name: Commit and Push changes
+- name: Run Python Script
+      run: update_portal.py  
+      
+    - name: Commit and Push Changes
       run: |
         git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@://github.com"
-        git add portal.txt playlist.m3u || true
-        git diff-index --quiet HEAD || git commit -m "Otomatis: Perbarui berkas playlist M3U"
-        git push
+        git config --global user.email "41898282+github-actions[bot]@://github.com"
+        
+        # Skenario 1: Menambahkan file hasil skrip Anda secara spesifik
+        # Jika skrip Anda menghasilkan mac_playlist.m3u, gunakan nama tersebut
+        git add mac_playlist.m3u || git add playlist.m3u
+        
+        # Skenario 2: Atau menambahkan semua perubahan yang ada di direktori kerja
+        # git add .
+        
+        # Memeriksa apakah ada perubahan yang siap di-commit agar tidak memicu Exit Code 1
+        if git diff-index --quiet HEAD --; then
+          echo "Tidak ada perubahan data playlist yang baru. Melewati proses commit."
+        else
+          git commit -m "Daftar putar otomatis diperbarui [Automated]"
+          git push origin main
+        fi
