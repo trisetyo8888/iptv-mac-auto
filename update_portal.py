@@ -1,186 +1,155 @@
-import os
-import sys
 import requests
-import re
 import json
+import re
+from urllib.parse import quote
 
-m3u_content = "#EXTM3U\n"
-total_all_channels = 0
-
-if not os.path.exists('Portal.txt'):
-    print("Error: File Portal.txt tidak ditemukan!")
-    sys.exit(1)
-
-with open('Portal.txt', 'r', encoding='utf-8') as f:
-    lines = [line.strip() for line in f if line.strip()]
-
-if not lines:
-    print("Error: File Portal.txt kosong!")
-    sys.exit(1)
-
-print(f"Membaca {len(lines)} akun MAC Portal dari file...")
-
-for index, account in enumerate(lines, start=1):
-    if '|' not in account:
-        print(f"Skipping baris {index}: Format salah (Gunakan URL|MAC)")
-        continue
-        
-    PORTAL_URL, MAC_ADDRESS = account.split('|', 1)
-    PORTAL_URL = PORTAL_URL.strip()
-    MAC_ADDRESS = MAC_ADDRESS.strip()
+def main():
+    print("Sedang mengambil data dari portal...")
     
-    print(f"\n[{index}/{len(lines)}] Memproses: {PORTAL_URL}")
+    # ========================================================
+    # 1. ATUR KREDENSIAL PORTAL ANDA DI SINI
+    # ========================================================
+    portal_url = "http://dinoon.sbs/c/"  # Ganti dengan URL portal asli Anda
+    mac_address = "00:1A:79:A7:7C:03"                  # Ganti dengan MAC address Anda
     
-    # Normalisasi Base URL
-    if '/c/' in PORTAL_URL:
-        base_url = PORTAL_URL.split('/c/')[0]
-    else:
-        base_url = PORTAL_URL.rstrip('/')
-        
-    api_url = f"{base_url}/server/load.php"
-    
+    portal_url = portal_url.rstrip('/')
     headers = {
-        'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbid/000000000000000000000000000000000000',
-        'Cookie': f'mac={MAC_ADDRESS}; stb_lang=en; timezone=Europe%2FParis;',
-        'Referer': f"{base_url}/c/",
-        'Accept': '*/*',
-        'Connection': 'keep-alive'
+        "User-Agent": "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stalker/",
+        "Cookie": f"mac={mac_address}"
     }
-    
+
     try:
-        # 1. Handshake Token
-        handshake_url = f"{api_url}?type=stb&action=handshake&token="
-        response = requests.get(handshake_url, headers=headers, timeout=12)
+        # ========================================================
+        # 2. PROSES HANDSHAKE & AUTENTIKASI TOKEN
+        # ========================================================
+        handshake_url = f"{portal_url}/server/load.php?type=stb&action=handshake"
+        req_handshake = requests.get(handshake_url, headers=headers, timeout=15)
         
-        if response.status_code == 200:
+        token = ""
+        if req_handshake.status_code == 200:
             try:
-                token = response.json().get('js', {}).get('token', '')
+                res_json = req_handshake.json()
+                token = res_json.get("js", {}).get("token", "")
                 if token:
-                    headers['Authorization'] = f"Bearer {token}"
-                    print("-> Autentikasi Berhasil!")
-            except Exception:
-                print("-> Gagal mengurai token handshake, mencoba lanjut...")
+                    headers["Authorization"] = f"Bearer {token}"
+            except:
+                pass
 
-        # 2. Ambil Data Kategori Terlebih Dahulu (Penting untuk mapping Grup Kategori)
-        genres_url = f"{api_url}?type=itv&action=get_genres"
-        genre_mapping = {}
-        try:
-            genres_res = requests.get(genres_url, headers=headers, timeout=10)
-            genres_data = genres_res.json().get('js', [])
-            if isinstance(genres_data, list):
-                for genre in genres_data:
-                    if isinstance(genre, dict) and 'id' in genre and 'title' in genre:
-                        genre_mapping[str(genre['id'])] = str(genre['title']).strip()
-        except Exception:
-            print("-> Gagal memetakan daftar genre, menggunakan nilai fallback.")
+        # ========================================================
+        # 3. MENGAMBIL DAFTAR KATEGORI (MENDUKUNG MULTI-ACTION: get_genres & get_categories)
+        # ========================================================
+        category_map = {}
+        
+        # Coba cara pertama: Menggunakan get_genres (Standar Stalker IPTV)
+        cat_actions = ["get_genres", "get_categories"]
+        cat_loaded = False
+        
+        for action in cat_actions:
+            if cat_loaded:
+                break
+            cat_url = f"{portal_url}/server/load.php?type=itv&action={action}"
+            try:
+                cat_response = requests.get(cat_url, headers=headers, timeout=15)
+                if cat_response.status_code == 200:
+                    cat_data = cat_response.json()
+                    cat_list = cat_data.get("js", [])
+                    
+                    # Jika response dibungkus data objek lagi
+                    if isinstance(cat_list, dict) and "data" in cat_list:
+                        cat_list = cat_list.get("data", [])
+                        
+                    if isinstance(cat_list, list) and len(cat_list) > 0:
+                        for cat in cat_list:
+                            cat_id = str(cat.get("id", cat.get("number", "")))
+                            # Mengambil nama folder dari key 'title' atau 'name'
+                            cat_name = cat.get("title", cat.get("name", "")).strip()
+                            if cat_id and cat_name:
+                                category_map[cat_id] = cat_name
+                        print(f"Berhasil memuat {len(category_map)} kategori via '{action}'.")
+                        cat_loaded = True
+            except Exception as e:
+                print(f"Gagal memuat via {action}, mencoba fallback berikutnya...")
 
-        # 3. Tarik Data Semua Saluran
-        channels_url = f"{api_url}?type=itv&action=get_all_channels"
-        res = requests.get(channels_url, headers=headers, timeout=15)
-        raw_text = res.text
-        count = 0
-
-        # METODE 1: Parsing JSON Resmi
-        try:
-            data = json.loads(raw_text)
-            channels_list = data.get('js', [])
+        # ========================================================
+        # 4. REQUEST SELURUH DAFTAR CHANNEL LIVE
+        # ========================================================
+        channel_url = f"{portal_url}/server/load.php?type=itv&action=get_all_channels"
+        response = requests.get(channel_url, headers=headers, timeout=15)
+        
+        if response.status_code != 200:
+            print(f"Gagal memuat daftar channel. Status kode: {response.status_code}")
+            return
             
-            if isinstance(channels_list, dict):
-                channels_list = list(channels_list.values())
-                
-            if isinstance(channels_list, list) and len(channels_list) > 0:
-                for ch in channels_list:
-                    if not isinstance(ch, dict):
-                        continue
-                        
-                    name = ch.get('name', 'Unknown Channel').strip()
-                    cmd = ch.get('cmd', '')
-                    ch_id = str(ch.get('id', '')).strip()
-                    logo = ch.get('logo', '')
-                    
-                    # Cek Kategori (Prioritas: genre_id mapping -> tv_genre_name -> default)
-                    category_id = str(ch.get('category_id', ''))
-                    if category_id in genre_mapping:
-                        ch_group = genre_mapping[category_id]
-                    else:
-                        ch_group = ch.get('tv_genre_name', '').strip() or f'Portal_{index}'
-                    
-                    # Bersihkan tanda kutip ganda pada teks agar format atribut M3U tidak rusak
-                    safe_name = name.replace('"', "'")
-                    safe_group = ch_group.replace('"', "'")
-                    
-                    # Resolusi Stream URL
-                    stream_url = ""
-                    if cmd:
-                        clean_cmd = str(cmd).replace('\\', '')
-                        link_match = re.search(r'(http[s]?://\S+)', clean_cmd)
-                        if link_match:
-                            stream_url = link_match.group(1).replace('"', '').replace("'", "")
-                        else:
-                            stream_id = clean_cmd.split('/')[-1].replace('"', '').strip()
-                            stream_url = f"{base_url}/live/{MAC_ADDRESS}/555/{stream_id}.ts"
-                    
-                    if not stream_url:
-                        stream_url = f"{base_url}/playlist/live/{ch_id}.ts"
-                        
-                    # Perbaikan Mutlak URL Logo
-                    logo_url = ""
-                    if logo:
-                        logo_str = str(logo).strip()
-                        if logo_str.startswith('http'):
-                            logo_url = logo_str
-                        else:
-                            # Jika nama file logo tidak menyertakan ekstensi gambar bawaan
-                            if not any(logo_str.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif']):
-                                logo_str += '.png'
-                            logo_url = f"{base_url}/misc/logos/320/{logo_str}"
-                    
-                    # Susun format M3U standar industri (Tanpa spasi sebelum koma)
-                    # Pola: #EXTINF:-1 tvg-id="X" tvg-name="X" tvg-logo="X" group-title="X",Nama Saluran
-                    m3u_line = f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{safe_name}"'
-                    if logo_url:
-                        m3u_line += f' tvg-logo="{logo_url}"'
-                    m3u_line += f' group-title="{safe_group}",{name}\n{stream_url}\n'
-                    
-                    m3u_content += m3u_line
-                    count += 1
-        except Exception:
-            pass
+        data = response.json()
+        channels = data.get("js", {}).get("data", [])
+        if not channels:
+            channels = data.get("js", []) if isinstance(data.get("js"), list) else []
 
-        # METODE FALLBACK 2: Regular Expression (Cadangan jika JSON gagal total)
-        if count == 0:
-            matches = re.findall(r'"id"\s*:\s*"([^"]+)"[^}]+?"name"\s*:\s*"([^"]+)"[^}]+?"cmd"\s*:\s*"([^"]+)"', raw_text)
-            if matches:
-                for ch_id, name, cmd in matches:
-                    ch_id = ch_id.strip()
-                    name = name.strip()
-                    safe_name = name.replace('"', "'")
-                    
-                    # Ekstraksi genre mentah dari string terdekat jika ada
-                    genre_match = re.search(r'"tv_genre_name"\s*:\s*"([^"]+)"', raw_text)
-                    ch_group = genre_match.group(1).strip() if genre_match else f'Portal_{index}'
-                    safe_group = ch_group.replace('"', "'")
-                    
-                    clean_cmd = cmd.replace('\\', '')
-                    link_match = re.search(r'(http[s]?://\S+)', clean_cmd)
-                    if link_match:
-                        stream_url = link_match.group(1).replace('"', '').replace("'", "")
-                    else:
-                        stream_id = clean_cmd.split('/')[-1].replace('"', '').strip()
-                        stream_url = f"{base_url}/live/{MAC_ADDRESS}/555/{stream_id}.ts"
-                        
-                    m3u_content += f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{safe_name}" group-title="{safe_group}",{name}\n{stream_url}\n'
-                    count += 1
-                    
-        print(f"-> Sukses mengekstrak {count} channel dari akun ini.")
-        total_all_channels += count
+        if not channels:
+            print("Tidak ada channel yang ditemukan dari respons portal.")
+            return
+
+        # ========================================================
+        # 5. BANGUN PLAYLIST M3U DENGAN COCOK FOLDER KATEGORI & LOGO
+        # ========================================================
+        m3u_content = "#EXTM3U\n"
+        
+        for ch in channels:
+            name = ch.get("name", "Unknown Channel").strip()
+            ch_id = ch.get("id", "")
+            
+            # --- DETEKSI KUNCI ID KATEGORI PADA DATA CHANNEL ---
+            # Menguji semua kemungkinan variabel pencocokan kategori di database Stalker
+            ch_cat_id = ""
+            for key in ["tv_genre_id", "tvg_id", "category_id", "ch_id"]:
+                if key in ch and ch.get(key):
+                    ch_cat_id = str(ch.get(key))
+                    break
+            
+            # Tentukan nama folder, jika ID cocok, ambil dari map. Jika tidak, gunakan nama asal
+            group_title = category_map.get(ch_cat_id, "Lainnya")
+            
+            # Memproses Link Streaming
+            cmd = ch.get("cmd", "")
+            stream_url = ""
+            if "http" in cmd:
+                match = re.search(r'(https?://[^\s"\']+)', cmd)
+                stream_url = match.group(1) if match else cmd
+            else:
+                stream_url = f"{portal_url}/itv/{ch_id}"
+
+            # Memproses Logo dari data Mac Portal dengan format nama file
+            logo_file = ch.get("logo", ch.get("tvg_logo", ch.get("icon", "")))
+            logo_url = ""
+            
+            if logo_file:
+                if logo_file.startswith("http"):
+                    logo_url = logo_file
+                else:
+                    logo_file_clean = logo_file.lstrip('/')
+                    logo_url = f"{portal_url}/misc/logos/{logo_file_clean}"
+            else:
+                encoded_name = quote(name)
+                logo_url = f"https://ui-avatars.com{encoded_name}&background=random&color=fff&size=256&font-size=0.35"
+
+            # Tulis metadata ke baris M3U
+            m3u_content += f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{name}" tvg-logo="{logo_url}" group-title="{group_title}",{name}\n'
+            
+            # Tambahkan konfigurasi pembacaan MAC & User agent untuk OTT Navigator
+            m3u_content += f'#EXTVLCOPT:http-user-agent={headers["User-Agent"]}\n'
+            m3u_content += f'#EXTVLCOPT:http-cookie=mac={mac_address}\n'
+            m3u_content += f'{stream_url}\n'
+
+        # ========================================================
+        # 6. SIMPAN OUTPUT KE FILE PLAYLIST.M3U
+        # ========================================================
+        with open("playlist.m3u", "w", encoding="utf-8") as file:
+            file.write(m3u_content)
+
+        print("Proses Berhasil! Folder kategori dan logo telah dipetakan ulang dengan benar.")
 
     except Exception as e:
-        print(f"-> Gagal memproses portal ini: {e}")
-        continue
+        print(f"Terjadi kegagalan pemrosesan data: {e}")
 
-print(f"\nSelesai! Total keseluruhan: {total_all_channels} channel berhasil dikumpulkan.")
-
-with open('playlist.m3u', 'w', encoding='utf-8') as f:
-    f.write(m3u_content)
-print("File 'playlist.m3u' diperbarui dengan perbaikan Kategori dan Tvg-Logo!")
+if __name__ == "__main__":
+    main()
