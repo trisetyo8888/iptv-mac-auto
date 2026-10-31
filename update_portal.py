@@ -149,6 +149,6 @@ for index, account in enumerate(lines, start=1):
 
 print(f"\nSelesai! Total keseluruhan: {total_all_channels} channel berhasil dikumpulkan.")
 
-with open('mac_playlist.m3u', 'w', encoding='utf-8') as f:
+with open('playlist.m3u', 'w', encoding='utf-8') as f:
     f.write(m3u_content)
 print("File 'playlist.m3u' berhasil dibuat dengan tag tvg-id dan tvg-name lengkap!")
