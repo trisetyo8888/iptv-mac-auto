@@ -48,7 +48,7 @@ for index, account in enumerate(lines, start=1):
     }
     
     try:
-        # 1. Langkah Handshake Token
+        # 1. Handshake Token
         handshake_url = f"{api_url}?type=stb&action=handshake&token="
         response = requests.get(handshake_url, headers=headers, timeout=12)
         
@@ -61,13 +61,26 @@ for index, account in enumerate(lines, start=1):
             except Exception:
                 print("-> Gagal mengurai token handshake, mencoba lanjut...")
 
-        # 2. Tarik Data Semua Saluran
+        # 2. Ambil Data Kategori Terlebih Dahulu (Penting untuk mapping Grup Kategori)
+        genres_url = f"{api_url}?type=itv&action=get_genres"
+        genre_mapping = {}
+        try:
+            genres_res = requests.get(genres_url, headers=headers, timeout=10)
+            genres_data = genres_res.json().get('js', [])
+            if isinstance(genres_data, list):
+                for genre in genres_data:
+                    if isinstance(genre, dict) and 'id' in genre and 'title' in genre:
+                        genre_mapping[str(genre['id'])] = str(genre['title']).strip()
+        except Exception:
+            print("-> Gagal memetakan daftar genre, menggunakan nilai fallback.")
+
+        # 3. Tarik Data Semua Saluran
         channels_url = f"{api_url}?type=itv&action=get_all_channels"
         res = requests.get(channels_url, headers=headers, timeout=15)
         raw_text = res.text
         count = 0
 
-        # METODE 1: Parsing JSON Resmi (Sangat direkomendasikan untuk tvg-id & tvg-name)
+        # METODE 1: Parsing JSON Resmi
         try:
             data = json.loads(raw_text)
             channels_list = data.get('js', [])
@@ -83,13 +96,20 @@ for index, account in enumerate(lines, start=1):
                     name = ch.get('name', 'Unknown Channel').strip()
                     cmd = ch.get('cmd', '')
                     ch_id = str(ch.get('id', '')).strip()
-                    ch_group = ch.get('tv_genre_name', f'Portal_{index}').strip()
                     logo = ch.get('logo', '')
                     
-                    # Pembersihan karakter kutip ganda pada string untuk menjaga validitas tag M3U
-                    safe_name = name.replace('"', "'")
+                    # Cek Kategori (Prioritas: genre_id mapping -> tv_genre_name -> default)
+                    category_id = str(ch.get('category_id', ''))
+                    if category_id in genre_mapping:
+                        ch_group = genre_mapping[category_id]
+                    else:
+                        ch_group = ch.get('tv_genre_name', '').strip() or f'Portal_{index}'
                     
-                    # Pembuatan URL Stream internal MAG
+                    # Bersihkan tanda kutip ganda pada teks agar format atribut M3U tidak rusak
+                    safe_name = name.replace('"', "'")
+                    safe_group = ch_group.replace('"', "'")
+                    
+                    # Resolusi Stream URL
                     stream_url = ""
                     if cmd:
                         clean_cmd = str(cmd).replace('\\', '')
@@ -103,31 +123,43 @@ for index, account in enumerate(lines, start=1):
                     if not stream_url:
                         stream_url = f"{base_url}/playlist/live/{ch_id}.ts"
                         
-                    # Pengaturan URL Logo
+                    # Perbaikan Mutlak URL Logo
                     logo_url = ""
                     if logo:
-                        logo_url = logo if str(logo).startswith('http') else f"{base_url}/misc/logos/320/{logo}"
+                        logo_str = str(logo).strip()
+                        if logo_str.startswith('http'):
+                            logo_url = logo_str
+                        else:
+                            # Jika nama file logo tidak menyertakan ekstensi gambar bawaan
+                            if not any(logo_str.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif']):
+                                logo_str += '.png'
+                            logo_url = f"{base_url}/misc/logos/320/{logo_str}"
                     
-                    # Menyusun baris M3U dengan atribut lengkap (tvg-id, tvg-name, tvg-logo, group-title)
+                    # Susun format M3U standar industri (Tanpa spasi sebelum koma)
+                    # Pola: #EXTINF:-1 tvg-id="X" tvg-name="X" tvg-logo="X" group-title="X",Nama Saluran
                     m3u_line = f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{safe_name}"'
                     if logo_url:
                         m3u_line += f' tvg-logo="{logo_url}"'
-                    m3u_line += f' group-title="{ch_group}",{name}\n{stream_url}\n'
+                    m3u_line += f' group-title="{safe_group}",{name}\n{stream_url}\n'
                     
                     m3u_content += m3u_line
                     count += 1
         except Exception:
-            pass  # Jika parsing JSON gagal, biarkan Regex cadangan mengambil alih
+            pass
 
-        # METODE FALLBACK 2: Regular Expression (Hanya berjalan jika Metode JSON gagal/kosong)
+        # METODE FALLBACK 2: Regular Expression (Cadangan jika JSON gagal total)
         if count == 0:
-            # Pola regex diperluas untuk menangkap id, name, dan cmd sekaligus
             matches = re.findall(r'"id"\s*:\s*"([^"]+)"[^}]+?"name"\s*:\s*"([^"]+)"[^}]+?"cmd"\s*:\s*"([^"]+)"', raw_text)
             if matches:
                 for ch_id, name, cmd in matches:
                     ch_id = ch_id.strip()
                     name = name.strip()
                     safe_name = name.replace('"', "'")
+                    
+                    # Ekstraksi genre mentah dari string terdekat jika ada
+                    genre_match = re.search(r'"tv_genre_name"\s*:\s*"([^"]+)"', raw_text)
+                    ch_group = genre_match.group(1).strip() if genre_match else f'Portal_{index}'
+                    safe_group = ch_group.replace('"', "'")
                     
                     clean_cmd = cmd.replace('\\', '')
                     link_match = re.search(r'(http[s]?://\S+)', clean_cmd)
@@ -137,7 +169,7 @@ for index, account in enumerate(lines, start=1):
                         stream_id = clean_cmd.split('/')[-1].replace('"', '').strip()
                         stream_url = f"{base_url}/live/{MAC_ADDRESS}/555/{stream_id}.ts"
                         
-                    m3u_content += f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{safe_name}" group-title="Portal_{index}",{name}\n{stream_url}\n'
+                    m3u_content += f'#EXTINF:-1 tvg-id="{ch_id}" tvg-name="{safe_name}" group-title="{safe_group}",{name}\n{stream_url}\n'
                     count += 1
                     
         print(f"-> Sukses mengekstrak {count} channel dari akun ini.")
@@ -151,4 +183,4 @@ print(f"\nSelesai! Total keseluruhan: {total_all_channels} channel berhasil diku
 
 with open('playlist.m3u', 'w', encoding='utf-8') as f:
     f.write(m3u_content)
-print("File 'playlist.m3u' berhasil dibuat dengan tag tvg-id dan tvg-name lengkap!")
+print("File 'playlist.m3u' diperbarui dengan perbaikan Kategori dan Tvg-Logo!")
