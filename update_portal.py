@@ -9,8 +9,8 @@ def main():
     # ========================================================
     # 1. ATUR KREDENSIAL PORTAL ANDA DI SINI
     # ========================================================
-    portal_url = "http://dinoon.sbs/c/"  # Ganti dengan URL portal asli Anda
-    mac_address = "00:1A:79:A7:7C:03"                  # Ganti dengan MAC address Anda
+    portal_url = "http://nexusconnects.org/c/"  # Ganti dengan URL portal asli Anda
+    mac_address = "00:1A:79:C8:4D:62"                  # Ganti dengan MAC address Anda
     
     portal_url = portal_url.rstrip('/')
     headers = {
